@@ -68,7 +68,15 @@ The project is licensed under GPL‑2.0, as noted in the LICENSE file. With thes
   - DMA1 Channel 1 transfers the buffer containing precise timing information for switching the multiplexer connected to the OPAMP1 input.
   - DMA1 Channel 2 transfers the buffer containing brightness values for each pixel to **DAC3 Channel 1** for pixel formation in the line.
 
+### Block Diagram
 ![OpenPixelOSD Block Diagram](doc/pic/internal-block-diagram.png)
+
+### Wiring Diagram
+Wiring diagram for quick project launch on WeActStudio:
+- https://github.com/WeActStudio/WeActStudio.STM32G431CoreBoard
+- https://github.com/WeActStudio/WeActStudio.STM32G474CoreBoard
+
+![OpenPixelOSD Wiring Diagram](doc/pic/openpixelosd-wiring.png)
 
 ### Operating Principle
 
