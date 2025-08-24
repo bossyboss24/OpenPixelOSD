@@ -62,9 +62,10 @@ _Min_Stack_Size = 0x1000; /* required amount of stack */
 MEMORY
 {
   RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 128K
-  FLASH (rx)        : ORIGIN = 0x08000000, LENGTH = 0x80000 - 0x4000 - 0x2000  /* 512K - 16K - 8K = 488K */
+  FLASH (rx)        : ORIGIN = 0x08000000, LENGTH = 0x80000 - 0x4000 - 0x2000 - 0x4000 /* 512K - 16K - 8K - 16K = 472K */
+  FLASH_SYS_FONT (rx) : ORIGIN = 0x08000000 + (0x80000 - 0x4000 - 0x2000 - 0x4000), LENGTH = 0x4000 /* 16K */
   FLASH_LOGO (rx)   : ORIGIN = 0x08000000 + (0x80000 - 0x4000 - 0x2000), LENGTH = 0x2000 /* 8K */
-  FLASH_FONT (rx)   : ORIGIN = 0x08000000 + (0x80000 - 0x4000), LENGTH = 0x4000 /* 16K */
+  FLASH_MSP_FONT (rx)   : ORIGIN = 0x08000000 + (0x80000 - 0x4000), LENGTH = 0x4000 /* 16K */
   CCMRAM (xrw)    : ORIGIN = 0x10000000, LENGTH = 32K
 }
 
@@ -203,6 +204,16 @@ SECTIONS
   } >RAM
 
   /* === Separate section for the font, aligned to 4 bytes === */
+  .system_font :
+    {
+      . = ALIGN(4);
+      __system_font_start = .;
+      KEEP(*(.system_font))
+      KEEP(*(.system_font.*))
+      . = ALIGN(4);
+      __system_font_end = .;
+    } > FLASH_SYS_FONT
+
   .font :
   {
     . = ALIGN(4);         /* start of the section – align to 4 bytes */
@@ -211,7 +222,7 @@ SECTIONS
     KEEP(*(.font.*))      /* also capture subsections .font.* */
     . = ALIGN(4);         /* end of the section – align to 4 bytes */
     __font_end = .;
-  } > FLASH_FONT         /* place in the FLASH_FONT region */
+  } > FLASH_MSP_FONT         /* place in the FLASH_FONT region */
 
   /* === Separate section for the logo, aligned to 4 bytes === */
   .logo :

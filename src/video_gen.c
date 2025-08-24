@@ -176,7 +176,7 @@ EXEC_RAM void video_gen_start(void)
         TIM17->ARR=LINE_FREQ_PAL;
         LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_6);
 
-        LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, DAC12BIT_FROM_MV(250));
+        LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, VIDE_DETECTION_MV);
 
         video_gen_enabled = true;
     }
@@ -188,7 +188,7 @@ EXEC_RAM void video_gen_stop(void)
         LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_6);
         LL_TIM_DisableCounter(TIM17);
         LL_TIM_DisableAllOutputs(TIM17);
-        LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, DAC12BIT_FROM_MV(300));
+        LL_DAC_ConvertData12RightAligned(DAC1, LL_DAC_CHANNEL_1, VIDE_DETECTION_MV);
         video_gen_enabled = false;
 
     }
