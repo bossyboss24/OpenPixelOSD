@@ -3,6 +3,12 @@
 OpenPixelOSD is an open-source project for generating and overlaying pixel graphics onto a video signal (OSD), based on the **STM32G431CBUx/** microcontroller.
 The project aims to create a software monochrome On-Screen Display (OSD) for VPV to phase out the obsolete *MAX7456* chip which has been discontinued
 
+OpenPixelOSD includes low-level drivers for the RTC6705 RF synthesizer and external power amplifier (SE5004L or similar).
+
+
+### Safety/Legal Notice
+
+The 5.8 GHz transmitter is subject to local regulations (power limits, parameters, certification requirements). Please ensure that the frequencies/power levels meet the requirements in your country.
 
 ## Repository Structure
 ```pgsql
@@ -101,6 +107,25 @@ This resource provides authoritative timing diagrams, signal structures, and tec
 - Software scalability: real-time pixel rendering.
 - Using the DAC to control pixel brightness.
 
+# RTC6705 & RF PA support
+
+RTC6705 support
+- 3-wire bit-bang interface (LSB-first, 25-bit)
+- rtc6705_set_frequency(mhz) to program output frequency (e.g. 5865 MHz)
+- rtc6705_set_power(level) to select internal PA power (3/7/11/13 dBm)
+- rtc6705_smoketest() / detection API to verify chip presence
+
+External PA control
+- DAC1 OUT2 (PA5) → TLV9001 buffer → VREF of SE5004L
+- ADC1 (PB14 / IN14) reads detector voltage (VDET)
+- Additional ADC ranks: MCU temperature sensor & VREFINT for accurate scaling
+- rf_pa_set_vref_mv() / rf_pa_get_vref_mv()
+- rf_pa_read_vdet_mv() and rf_pa_estimate_pout_dbm() for telemetry
+
+With these blocks you can build a simple FPV VTX:
+RTC6705 generates the carrier, the internal PA provides a small boost, and the external PA (SE5004L etc.) delivers 100 mW–800 mW or more output.
+Detector voltage is accessible for telemetry or closed-loop calibration.
+
 ## Connection and Setup
 
 TODO:
@@ -120,6 +145,13 @@ Open source software — see LICENSE in the repository.
 
 OpenPixelOSD — це open-source проєкт для генерації та накладання піксельної графіки на відеосигнал (OSD), створений на базі **STM32G431CBUx**. 
 Проєкт призначений для створення програмного монохромного On-Screen Display (OSD) для FPV, щоб відмовитися від застарілого чіпа *MAX7456*, який знятий з виробництва.
+
+У OpenPixelOSD додано драйвери для RF синтезатора RTC6705 та зовнішнього підсилювача потужності (SE5004L чи аналогічного).
+
+### Зауваження з безпеки/законодавства
+
+Передавач на 5.8 ГГц підпадає під локальні регулювання (обмеження потужності, діапазон, вимоги до сертифікації). Переконайся, що частоти/рівні потужності відповідають вимогам у твоїй країні.
+
 
 ## Як це працює
 
@@ -155,6 +187,25 @@ OpenPixelOSD — це open-source проєкт для генерації та н
 - Підтримка точної синхронізації за допомогою апаратних компараторів.
 - Програмна масштабованість: рендеринг пікселів у реальному часі з можливістю накладання графіки.
 - Використання DAC для керування яскравістю пікселів.
+
+# Підтримка RTC6705 та RF PA
+У OpenPixelOSD додано драйвери для RF синтезатора RTC6705 та зовнішнього підсилювача потужності (SE5004L чи аналогічного).
+
+RTC6705
+- 3-дротовий інтерфейс (25-біт, LSB-first)
+- rtc6705_set_frequency(mhz) — програмування робочої частоти (наприклад 5865 МГц)
+- rtc6705_set_power(level) — вибір рівня потужності внутрішнього PA (3/7/11/13 dBm)
+- rtc6705_smoketest() / функція виявлення для перевірки чіпа
+
+Керування зовнішнім PA
+- DAC1 OUT2 (PA5) → TLV9001 → VREF підсилювача SE5004L
+- ADC1 (PB14 / IN14) вимірює вихід детектора (VDET)
+- Додаткові ранги: сенсор температури MCU та VREFINT для точного масштабування
+- rf_pa_set_vref_mv() / rf_pa_get_vref_mv()
+- rf_pa_read_vdet_mv() та rf_pa_estimate_pout_dbm() — для телеметрії
+
+Таким чином можна побудувати FPV VTX, RTC6705 формує несучу, внутрішній PA підсилює її, а зовнішній PA (SE5004L) дає вихід 100–800 мВт або більше (залежно від підсилювача).
+Напруга з детектора доступна для телеметрії або калібрування в замкненому циклі.
 
 ## Підключення та налаштування
 TODO:
