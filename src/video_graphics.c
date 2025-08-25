@@ -36,7 +36,7 @@ void video_graphics_init(void)
     active_video_buffer = 0;
 }
 
-void video_graphics_clear_draw_buff(px_t color)
+EXEC_RAM void video_graphics_clear_draw_buff(px_t color)
 {
     uint8_t pixel_byte = ((color & 0x3) << 6) |
                          ((color & 0x3) << 4) |
@@ -57,7 +57,7 @@ void video_draw_pixel(uint16_t x, uint16_t y, px_t color)
     *byte |= ((color & 0x3) << shift);
 }
 
-static inline void vg_put_px2(uint16_t x, uint16_t y, uint8_t v2)
+EXEC_RAM static inline void vg_put_px2(uint16_t x, uint16_t y, uint8_t v2)
 {
     if (x >= VIDEO_WIDTH || y >= VIDEO_HEIGHT) return;
     uint8_t *line = &video_frame_buffer[active_video_buffer][y][0];
@@ -123,7 +123,7 @@ EXEC_RAM void video_graphics_draw_complete(void)
     video_graphics_clear_draw_buff(PX_TRANSPARENT);
 }
 
-inline bool bit_at(const uint8_t *glyph, uint8_t gx, uint8_t gy, uint8_t BPR) {
+EXEC_RAM inline bool bit_at(const uint8_t *glyph, uint8_t gx, uint8_t gy, uint8_t BPR) {
     const uint8_t *row = glyph + (uint32_t)gy * BPR;
     /* MSB-first within each byte */
     uint8_t byte = row[gx >> 3];
@@ -134,7 +134,7 @@ inline bool bit_at(const uint8_t *glyph, uint8_t gx, uint8_t gy, uint8_t BPR) {
 // Render a single 8-bit code (0..255) at top-left (x,y).
 // Transparent: skip zero bits. Foreground = PX_WHITE.
 // Adds a 1px black outline (4-neighborhood) without overwriting white strokes.
-void video_draw_char_1bpp(uint16_t x, uint16_t y, uint8_t c)
+EXEC_RAM void video_draw_char_1bpp(uint16_t x, uint16_t y, uint8_t c)
 {
     const font1bpp_t *f = font_system_get();
     if (!f || !f->data) return;
@@ -208,7 +208,7 @@ void video_draw_char_1bpp(uint16_t x, uint16_t y, uint8_t c)
 
 // Render string (bytes are direct glyph codes 0..255) at (x,y).
 // Returns the X cursor after rendering (monospace advance = glyph_w).
-uint16_t video_draw_text_system_font(uint16_t x, uint16_t y, const char *s)
+EXEC_RAM uint16_t video_draw_text_system_font(uint16_t x, uint16_t y, const char *s)
 {
     const font1bpp_t *f = font_system_get();
     if (!f || !s) return x;
@@ -228,7 +228,7 @@ uint16_t video_draw_text_system_font(uint16_t x, uint16_t y, const char *s)
  *  - '\n' moves to the next line (y += glyph_h) and resets X to start_x
  *  - string is truncated to VIDEO_TEXT_TMP_MAX-1 if longer
  */
-uint16_t video_draw_text_system_font_fmt(uint16_t x, uint16_t y, const char *fmt, ...)
+EXEC_RAM uint16_t video_draw_text_system_font_fmt(uint16_t x, uint16_t y, const char *fmt, ...)
 {
     const font1bpp_t *f = font_system_get();
     if (!f || !fmt) return x;
