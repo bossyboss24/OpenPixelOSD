@@ -137,6 +137,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         ./src/msp/msp.c
         ./src/gpio.c
         ./src/dac.c
+        ./src/adc.c
         ./src/dma.c
         ./src/opamp.c
         ./src/tim.c
@@ -149,6 +150,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         ./src/msp_displayport.c
         ./src/fonts/update_font.c
         ./src/video_graphics.c
+        ./src/rtc6705.c
+        ./src/rf_pa.c
         ./src/main.c
 
 )

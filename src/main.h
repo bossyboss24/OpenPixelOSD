@@ -19,6 +19,7 @@
 #include "stm32g4xx_ll_tim.h"
 #include "stm32g4xx_ll_usart.h"
 #include "stm32g4xx_ll_gpio.h"
+#include "stm32g4xx_ll_adc.h"
 
 #ifndef GIT_TAG
 #define GIT_TAG "-.-.-"
@@ -44,6 +45,19 @@ typedef enum {
   PX_GRAY
 } px_t;
 
+/* --------- Logical channel order in the regular sequence ---------
+ * R1: PA-VDET (PB14/IN14)
+ * R2: TempSensor (internal)
+ * R3: reserved
+ */
+typedef enum {
+  ADC_CH_RESERVED = 0,
+  ADC_CH_PA_VDET = 1,
+  ADC_CH_TEMP = 2,
+  ADC_CH_VREF_INT  = 3, // internal VREFINT
+  ADC_CH_COUNT
+} adc_ch_t;
+
 #define USER_KEY_Pin LL_GPIO_PIN_13
 #define USER_KEY_GPIO_Port GPIOC
 #define COMP3_INP_VIDEO_IN_Pin LL_GPIO_PIN_0
@@ -58,6 +72,10 @@ typedef enum {
 #define OPAMP1_VINPIO2_VIDEO_IN_GPIO_Port GPIOA
 #define SPI2_CS_Pin LL_GPIO_PIN_14
 #define SPI2_CS_GPIO_Port GPIOB
+#define SPI2_SCK_Pin LL_GPIO_PIN_13
+#define SPI2_SCK_GPIO_Port GPIOB
+#define SPI2_MOSI_Pin LL_GPIO_PIN_15
+#define SPI2_MOSI_GPIO_Port GPIOB
 #define LED_STATE_Pin LL_GPIO_PIN_6
 #define LED_STATE_GPIO_Port GPIOC
 #define TIM17_CH1_VIDEO_GEN_OUT_Pin LL_GPIO_PIN_5
@@ -80,6 +98,11 @@ typedef enum {
 #define VIDE_DETECTION_MV       (DAC12BIT_TO_MV(250)) // 250 mV for video detection
 
 void gpio_init(void);
+void adc_init(void);
+uint16_t adc_read_raw(adc_ch_t ch);
+uint16_t adc_read_mv(adc_ch_t ch);
+uint32_t adc_read_vdda_mv(void);
+float adc_read_mcu_temp_c(void);
 
 void DAC1_Init(void);
 void DAC3_Init(void);

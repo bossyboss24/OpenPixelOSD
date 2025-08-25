@@ -30,6 +30,22 @@ void DAC1_Init(void)
     LL_DAC_DisableTrigger(DAC1, LL_DAC_CHANNEL_1);
     LL_DAC_DisableDMADoubleDataMode(DAC1, LL_DAC_CHANNEL_1);
 
+    /** DAC1 channel OUT2 config */
+    LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
+    LL_AHB2_GRP1_EnableClock(LL_AHB2_GRP1_PERIPH_GPIOA);
+    /** DAC1 GPIO Configuration
+    PA5   ------> DAC1_OUT2 */
+    GPIO_InitStruct.Pin = LL_GPIO_PIN_5;
+    GPIO_InitStruct.Mode = LL_GPIO_MODE_ANALOG;
+    GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+    LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+    LL_DAC_SetSignedFormat(DAC1, LL_DAC_CHANNEL_2, LL_DAC_SIGNED_FORMAT_DISABLE);
+    DAC_InitStruct.OutputBuffer = LL_DAC_OUTPUT_BUFFER_ENABLE;
+    DAC_InitStruct.OutputConnection = LL_DAC_OUTPUT_CONNECT_GPIO;
+    LL_DAC_Init(DAC1, LL_DAC_CHANNEL_2, &DAC_InitStruct);
+    LL_DAC_DisableTrigger(DAC1, LL_DAC_CHANNEL_2);
+    LL_DAC_DisableDMADoubleDataMode(DAC1, LL_DAC_CHANNEL_2);
 
 }
 
