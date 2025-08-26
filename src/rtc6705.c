@@ -5,8 +5,16 @@
 #include "rtc6705.h"
 #include "main.h"
 
-/** rtc6705.c
- * Bit-banged 3-wire interface for RTC6705
+#include <rf_pa.h>
+
+/** rtc6705.c  — Bit-banged 3-wire interface for RTC6705
+ *  Safety notes (important):
+ *  - Writing Synth B (0x01) forces VCO mode even if value is unchanged → avoid redundant writes.
+ *  - Pre-driver & PA Control (0x07): writing values other than the device defaults can create
+ *    strong spurs. Keep 0x07 at its power-on value unless you explicitly allow it.
+ *  - Keep external PA disabled until the device reaches a stable/locked state (STATE 0x0F stable),
+ *    especially after reset and any synthesizer programming.
+ *
  *      Datasheet notes (RTC6705):
  *      - 25-bit frame, LSB-first: A0..A3 (4b) + RW (1=write,0=read) + D0..D19 (20b).
  *      - FRF = 2 * (N*64 + A) * (Fosc / R). Typical Fosc=8 MHz, R=400 => Fref=20 kHz.
@@ -75,9 +83,34 @@
 #define REG7_PA5G_PW_SHIFT  7
 #define REG7_PA5G_PW_MASK   (0x3u << REG7_PA5G_PW_SHIFT)
 
+#ifndef RTC6705_POST_WRITE_DELAY_US
+#define RTC6705_POST_WRITE_DELAY_US   50u
+#endif
+#ifndef RTC6705_LOCK_WAIT_TIMEOUT_US
+#define RTC6705_LOCK_WAIT_TIMEOUT_US 5000u
+#endif
+#ifndef RTC6705_LOCK_STABLE_US
+#define RTC6705_LOCK_STABLE_US       200u
+#endif
+
+static uint32_t g_reg7_poweron = 0;     // captured initial 0x07 value
+static uint32_t g_reg7_cached   = 0;    // last written/readback value
+static uint32_t g_regb_cached   = 0;    // last programmed SYN_B payload
+static uint32_t g_freq_mhz_last = 0;    // last applied RF in MHz
+static bool g_allow_reg7_w  = false;    // guard flag
+
 static void rtc6705_write_reg(uint8_t addr4, uint32_t data20);
 static uint32_t rtc6705_read_reg(uint8_t addr4);
 static bool rtc6705_detect(void);
+
+__attribute__((weak)) void rtc6705_hook_ext_pa_enable(bool on)
+{
+    rf_pa_enable(on);
+}
+__attribute__((weak)) void rtc6705_hook_delay_us(uint32_t us)
+{
+    HAL_Delay(us);
+}
 
 static inline void bb_delay(void)
 {
@@ -174,10 +207,18 @@ bool rtc6705_init(void)
     SCLK_WR(0);
     LE_WR(0);
     SDIO_WR(0);
+
+    if (rtc6705_detect() == false) {
+        return false;
+    }
     // Program default R (optional but explicit)
     rtc6705_write_reg(RTC6705_REG_SYN_A, (RTC6705_R_DIV & SYNA_R_MASK));
 
-    return rtc6705_detect();
+    // Capture REG 0x07 power-on value and cache it (guard writes later).
+    g_reg7_poweron = rtc6705_read_reg(RTC6705_REG_VCO3) & 0xFFFFFu;
+    g_reg7_cached = g_reg7_poweron;
+
+    return true;
 }
 
 /**
@@ -232,16 +273,74 @@ static uint32_t rtc6705_read_reg(uint8_t addr4)
     return (data & 0xFFFFFu);
 }
 
+static uint32_t rtc6705_get_state_raw(void)
+{
+    return rtc6705_read_reg(RTC6705_REG_STATE) & 0xFFFFFu;
+}
+
+__attribute__((unused))
+static uint8_t rtc6705_get_state3(void)
+{
+    return (uint8_t)(rtc6705_get_state_raw() & 0x7u);
+}
+
+/** Wait until STATE register readings are stable for a short window.
+ *  This is a generic lock/settle heuristic when exact state codes are unknown.
+ *  Returns true if stabilized; false on timeout.
+ */
+static bool rtc6705_wait_state_stable(uint32_t stable_us, uint32_t timeout_us)
+{
+    uint32_t last = rtc6705_get_state_raw();
+    uint32_t stable_elapsed = 0;
+    uint32_t elapsed = 0;
+
+    while (elapsed < timeout_us) {
+        rtc6705_hook_delay_us(10);
+        elapsed += 10;
+
+        uint32_t cur = rtc6705_get_state_raw();
+        if (cur == last) {
+            stable_elapsed += 10;
+            if (stable_elapsed >= stable_us) {
+                return true;
+            }
+        } else {
+            stable_elapsed = 0;
+            last = cur;
+        }
+    }
+    return false;
+}
+
+// Guard for REG 0x07 writes
+void rtc6705_allow_power_writes(bool allow)
+{
+    g_allow_reg7_w = allow;
+}
+
 /**
  * @brief Set internal PA output power level via PA5G_PW[1:0] (REG 0x07).
  * @param level one of rtc6705_power_t values (3, 7, 11, 13 dBm).
+ * WARNING: By default, writes to 0x07 are blocked to avoid spurious emissions.
+ *  Call rtc6705_allow_power_writes(true) if you really know what you are doing.
  */
 void rtc6705_set_power(rtc6705_power_t level)
 {
-    uint32_t reg = rtc6705_read_reg(RTC6705_REG_VCO3);
-    reg &= ~REG7_PA5G_PW_MASK;
-    reg |= ((uint32_t)level << REG7_PA5G_PW_SHIFT) & REG7_PA5G_PW_MASK;
-    rtc6705_write_reg(RTC6705_REG_VCO3, reg);
+    if (!g_allow_reg7_w) {
+        // Guard active: keep power-on defaults to avoid spurs.
+        return;
+    }
+
+    uint32_t reg = rtc6705_read_reg(RTC6705_REG_VCO3) & 0xFFFFFu;
+    uint32_t new_reg = (reg & ~REG7_PA5G_PW_MASK) |
+                    ((((uint32_t)level) << REG7_PA5G_PW_SHIFT) & REG7_PA5G_PW_MASK);
+
+    if (new_reg == g_reg7_cached) {
+        return; // no write if unchanged
+    }
+
+    rtc6705_write_reg(RTC6705_REG_VCO3, new_reg);
+    g_reg7_cached = new_reg;
 }
 
 /**
@@ -251,6 +350,9 @@ void rtc6705_set_power(rtc6705_power_t level)
  *
  * Formula: FRF = 2 * (N*64 + A) * (Fosc / R).
  * With Fosc=8 MHz, R=400 => step = 40 kHz.
+ *
+ *  - Wait for STATE to stabilize (lock proxy).
+ *  - Re-enable external PA.
  */
 uint32_t rtc6705_set_frequency(uint32_t freq_mhz)
 {
@@ -270,8 +372,33 @@ uint32_t rtc6705_set_frequency(uint32_t freq_mhz)
     uint32_t regB = ((N & SYNB_N_MASK) << SYNB_N_SHIFT) |
                     ((A & SYNB_A_MASK) << SYNB_A_SHIFT);
 
+    // Avoid writing if resulting regB equals last programmed (prevents VCO re-entry)
+    if ((g_freq_mhz_last == freq_mhz) && (g_regb_cached == regB)) {
+        return freq_mhz; // nothing to do
+    }
+
+    // Gate external PA while (re)programming to avoid OOB emissions
+    rtc6705_hook_ext_pa_enable(false);
+
+    // Ensure R is set (write every time is fine, but it's static; ok to re-write)
     rtc6705_write_reg(RTC6705_REG_SYN_A, (RTC6705_R_DIV & SYNA_R_MASK));
-    rtc6705_write_reg(RTC6705_REG_SYN_B, regB);
+
+    // Only write SYN_B if changed (critical per datasheet/field notes)
+    if (g_regb_cached != regB) {
+        rtc6705_write_reg(RTC6705_REG_SYN_B, regB);
+        g_regb_cached = regB;
+    }
+
+    // Short settle before polling
+    rtc6705_hook_delay_us(RTC6705_POST_WRITE_DELAY_US);
+
+    // Wait for state stability (proxy for lock/STBY) before enabling external PA
+    rtc6705_wait_state_stable(RTC6705_LOCK_STABLE_US, RTC6705_LOCK_WAIT_TIMEOUT_US);
+
+    // Re-enable external PA
+    rtc6705_hook_ext_pa_enable(true);
+
+    g_freq_mhz_last = freq_mhz;
 
     uint64_t actual_hz = (uint64_t)step_hz * (uint64_t)(N * 64u + A);
     return (uint32_t)(actual_hz / 1000000ull); // return in MHz
@@ -291,41 +418,24 @@ uint32_t rtc6705_set_frequency(uint32_t freq_mhz)
  */
 static bool rtc6705_detect(void)
 {
-    uint32_t s[4];
-    for (int i = 0; i < 4; ++i) {
-        s[i] = rtc6705_read_reg(RTC6705_REG_STATE) & 0xFFFFF; // mask to 20 bits
+    // Take 4 consecutive samples of STATE register (20-bit values)
+    uint32_t s0 = rtc6705_get_state_raw();
+    uint32_t s1 = rtc6705_get_state_raw();
+    uint32_t s2 = rtc6705_get_state_raw();
+    uint32_t s3 = rtc6705_get_state_raw();
+
+    bool all_zero = (s0|s1|s2|s3) == 0;
+    // all reads are all ones (0xFFFFF) - bus floating or invalid
+    bool all_ones = (s0==0xFFFFF) && (s1==0xFFFFF) && (s2==0xFFFFF) && (s3==0xFFFFF);
+    if (all_zero || all_ones) {
+        return false;
     }
 
-    // Reject if all samples are zero or all ones
-    bool all_zero = (s[0] == 0) && (s[1] == 0) && (s[2] == 0) && (s[3] == 0);
-    bool all_ones = (s[0] == 0xFFFFF) && (s[1] == 0xFFFFF) &&
-                    (s[2] == 0xFFFFF) && (s[3] == 0xFFFFF);
-    if (all_zero || all_ones)
-        return false;
-
-    // Accept if all samples are identical and valid
-    bool all_same = (s[0] == s[1]) && (s[1] == s[2]) && (s[2] == s[3]);
-    if (all_same)
-        return true;
-
-    // Otherwise check if high bits [19:3] are stable across samples
-    uint32_t hi_mask = 0xFFFF8; // bits 19..3
-    bool hi_stable = ((s[0] & hi_mask) == (s[1] & hi_mask)) &&
-                     ((s[1] & hi_mask) == (s[2] & hi_mask)) &&
-                     ((s[2] & hi_mask) == (s[3] & hi_mask));
-
+    // Accept if high bits stable across samples; low 3 bits may vary
+    uint32_t hi_mask = 0xFFFF8u;
+    // Verify that high bits are identical across all samples
+    bool hi_stable = ((s0 & hi_mask) == (s1 & hi_mask)) &&
+                     ((s1 & hi_mask) == (s2 & hi_mask)) &&
+                     ((s2 & hi_mask) == (s3 & hi_mask));
     return hi_stable;
-}
-
-/**
- * @brief Smoketest: read the readable STATE register (0x0F).
- *        Returns STATE[2:0] in bits [2:0] of the returned 20-bit value.
- */
-uint32_t rtc6705_smoketest(void)
-{
-    // Ensure interface is initialized before calling.
-    // Read STATE (address 0x0F): documented readable register.
-    uint32_t state = rtc6705_read_reg(RTC6705_REG_STATE);
-    // You can set a breakpoint here to see 'state' (bits [2:0] show current state).
-    return state;
 }

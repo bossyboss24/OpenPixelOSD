@@ -4,15 +4,19 @@
  */
 #include "main.h"
 #include <stdbool.h>
+#include <string.h>
 
 CCMRAM_BSS static uint32_t dma_old_pos = 0;
 
 #define UART_RX_RING_BUF_SIZE 1024
+#define UART_TX_BUF_SIZE 512
 #define UART_RX_DMA_BUF_SIZE (2)
 static uint8_t uart_rx_buf[UART_RX_DMA_BUF_SIZE];
 static uint8_t uart_rx_ring_buff[UART_RX_RING_BUF_SIZE];
 static volatile uint16_t uart_rx_head = 0;
 static volatile uint16_t uart_rx_tail = 0;
+static uint8_t uart_tx_buf[UART_TX_BUF_SIZE];
+static volatile bool tx_bysy = false;
 
 static void uart_rx_ring_put(uint8_t data);
 
@@ -101,6 +105,9 @@ void uart1_init(void)
     while((!(LL_USART_IsActiveFlag_TEACK(USART1))) || (!(LL_USART_IsActiveFlag_REACK(USART1))))
     {
     }
+
+    NVIC_SetPriority(DMA2_Channel2_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 1, 0));
+    NVIC_EnableIRQ(DMA2_Channel2_IRQn);
 }
 
 void uart1_dma_rx_start(void)
@@ -133,7 +140,11 @@ void uart1_dma_rx_start(void)
 
 void uart1_tx_dma(uint8_t *data, uint32_t len)
 {
+    while(tx_bysy){};
     if (len == 0) return;
+    if (len > UART_TX_BUF_SIZE) len = UART_TX_BUF_SIZE;
+    memcpy(uart_tx_buf, data, len);
+    tx_bysy = true;
 
     LL_DMA_DisableChannel(DMA2, LL_DMA_CHANNEL_2);
 
@@ -141,7 +152,7 @@ void uart1_tx_dma(uint8_t *data, uint32_t len)
     LL_DMA_ClearFlag_TE2(DMA2);
 
     LL_DMA_ConfigAddresses(DMA2, LL_DMA_CHANNEL_2,
-                           (uint32_t)data,
+                           (uint32_t)uart_tx_buf,
                            LL_USART_DMA_GetRegAddr(USART1, LL_USART_DMA_REG_DATA_TRANSMIT),
                            LL_DMA_DIRECTION_MEMORY_TO_PERIPH);
 
@@ -149,6 +160,12 @@ void uart1_tx_dma(uint8_t *data, uint32_t len)
 
     LL_USART_EnableDMAReq_TX(USART1);
 
+    LL_DMA_EnableChannel(DMA2, LL_DMA_CHANNEL_2);
+
+    LL_DMA_EnableIT_TE(DMA2, LL_DMA_CHANNEL_2);
+    LL_DMA_EnableIT_TC(DMA2, LL_DMA_CHANNEL_2);
+
+    LL_USART_EnableDMAReq_TX(USART1);
     LL_DMA_EnableChannel(DMA2, LL_DMA_CHANNEL_2);
 }
 
@@ -178,10 +195,14 @@ EXEC_RAM void DMA2_Channel2_IRQHandler(void)
     if (LL_DMA_IsActiveFlag_TC2(DMA2))
     {
         LL_DMA_ClearFlag_TC2(DMA2);
+        while (!LL_USART_IsActiveFlag_TC(USART1)) {}
+        LL_USART_DisableDMAReq_TX(USART1);
+        tx_bysy = false;
     }
     if (LL_DMA_IsActiveFlag_TE2(DMA2))
     {
         LL_DMA_ClearFlag_TE2(DMA2);
+        tx_bysy = false;
     }
 }
 

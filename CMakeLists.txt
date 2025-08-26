@@ -152,6 +152,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         ./src/video_graphics.c
         ./src/rtc6705.c
         ./src/rf_pa.c
+        ./src/vtx_msp.c
         ./src/main.c
 
 )

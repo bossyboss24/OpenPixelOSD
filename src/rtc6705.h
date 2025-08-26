@@ -15,8 +15,8 @@ typedef enum {
 } rtc6705_power_t;
 
 bool rtc6705_init(void);
+void rtc6705_allow_power_writes(bool allow);
 void rtc6705_set_power(rtc6705_power_t level);
 uint32_t rtc6705_set_frequency(uint32_t freq_mhz);
-uint32_t rtc6705_smoketest(void);
 
 #endif //RTC6705_H

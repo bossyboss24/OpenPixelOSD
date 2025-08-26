@@ -4,13 +4,14 @@
  */
 #include "msp_displayport.h"
 #include "canvas_char.h"
+#include "fonts/update_font.h"
 #include "main.h"
 #include "msp.h"
 #include "uart.h"
 #include "usb.h"
-#include "fonts/update_font.h"
 #include <stdio.h>
 #include <string.h>
+#include <vtx_msp.h>
 
 typedef enum {
     MSP_DISPLAYPORT_KEEPALIVE,
@@ -21,16 +22,6 @@ typedef enum {
     MSP_DISPLAYPORT_SET_OPTIONS,
     MSP_DISPLAYPORT_DRAW_SYSTEM
 } msp_displayport_cmd_t;
-
-typedef enum
-{
-    MSP_OWNER_UART = 0x00,
-    MSP_OWNER_USB = 0x01,
-    MSP_OWNER_MAX = 0xFF
-} msp_owner_t;
-
-#define UART_TX_BUF_SIZE (64)
-static uint8_t msp_tx_buff[UART_TX_BUF_SIZE];
 
 extern char canvas_char_map[2][ROW_SIZE][COLUMN_SIZE];
 extern uint8_t active_buffer;
@@ -55,23 +46,32 @@ EXEC_RAM static void msp_callback(uint8_t owner, msp_version_t msp_version, uint
 {
     switch(msp_version) {
     case MSP_V1: {
-        if (msp_cmd == MSP_DISPLAYPORT) {
+        switch(msp_cmd) {
+        case MSP_DISPLAYPORT: {
             msp_displayport_cmd_t sub_cmd = payload[0];
             switch(sub_cmd) {
             case MSP_DISPLAYPORT_KEEPALIVE: // 0 -> Open/Keep-Alive DisplayPort
             {
                 static bool displayport_initialized = false;
                 if (!displayport_initialized) {
+                    vtx_msp_request_config(owner);
                     displayport_initialized = true;
                     show_logo = false;
                     // Send canvas size to FC
                     uint8_t data[2] = {COLUMN_SIZE, ROW_SIZE};
-                    uint16_t len = construct_msp_command_v1(msp_tx_buff, MSP_SET_OSD_CANVAS, data, 2, MSP_OUTBOUND);
-                    if (owner == MSP_OWNER_USB) {
-                        usb_uart_write_bytes((const char *)msp_tx_buff, len);
-                    } else if (owner == MSP_OWNER_UART) {
-                        uart1_tx_dma(msp_tx_buff, len);
-                    } else { return; } // do nothing
+                    uint8_t tx_buff[64];
+                    uint16_t len = construct_msp_command_v1(tx_buff, MSP_SET_OSD_CANVAS, data, 2, MSP_OUTBOUND);
+                    switch(owner) {
+                    case MSP_OWNER_UART:
+                        uart1_tx_dma(tx_buff, len);
+                        break;
+                    case MSP_OWNER_USB:
+                        usb_uart_write_bytes((const char *)tx_buff, len);
+                        break;
+                    default:
+                        break;
+                    }
+
                 }
             }
                 break;
@@ -100,18 +100,36 @@ EXEC_RAM static void msp_callback(uint8_t owner, msp_version_t msp_version, uint
                 break;
             }
         }
+            break;
 
-        if(msp_cmd == MSP_OSD_CHAR_WRITE) {
+        case  MSP_OSD_CHAR_WRITE: {
             update_font_symbol_write(payload[0], &payload[1], data_size - 1);
         }
-    }
+            break;
+
+        case MSP_VTX_CONFIG:
+        case MSP_SET_VTX_CONFIG:
+        case MSP_VTXTABLE_BAND:
+        case MSP_VTXTABLE_POWERLEVEL: {
+            vtx_msp_handle_msp(owner, msp_cmd, data_size, payload);
+            const vtx_config_t *vtx_config = vtx_get_config();
+            if (!vtx_config->vtx_table_available) {
+                vtx_msp_clear_table_and_set_defaults(owner);
+            }
+        }
+            break;
+
+        default:
+            printf("MSP command not parsed %d:0x%02X\r\n",msp_cmd, msp_cmd);
+            break;
+        }
         break;
-    case MSP_V2_OVER_V1:
-        break;
-    case MSP_V2_NATIVE:
-        break;
-    default:
-        break;
+        case MSP_V2_OVER_V1:
+            break;
+        case MSP_V2_NATIVE:
+            break;
+        default:
+            break;
     }
 
 #if 0 // debug msp via usb-cdc
@@ -121,15 +139,26 @@ EXEC_RAM static void msp_callback(uint8_t owner, msp_version_t msp_version, uint
     printf("\r\n");
 #endif
 
+    }
 }
+
+#define MSP_REQUEST_LOOP_INTERVAL 1000
 
 EXEC_RAM void msp_loop_process(void)
 {
+    static uint32_t last_tick = 0;
+    static bool resp = true;
+
     uint8_t byte;
     while (uart_rx_ring_get(&byte)) {
         msp_process_received_data(&msp_uart, byte);
     }
     while (usb_uart_read_byte(&byte)) {
         msp_process_received_data(&msp_usb, byte);
+    }
+
+    if ((HAL_GetTick() - last_tick) >= MSP_REQUEST_LOOP_INTERVAL && resp) {
+        last_tick = HAL_GetTick();
+        vtx_msp_request_config(MSP_OWNER_UART);
     }
 }

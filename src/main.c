@@ -30,9 +30,7 @@ void debug_print_loop(void)
 
     if ((HAL_GetTick() - last_tick) >= DEBUG_LOOP_INTERVAL) {
         last_tick = HAL_GetTick();
-        uint16_t vdet = rf_pa_read_vdet_mv();
-        printf("PA Vdet: %umV, Set PA Vref: %umV\r\n", vdet, rf_pa_get_vref_mv());
-        printf("MCU Temp: %.2fC, Vdd: %lumV\r\n", adc_read_mcu_temp_c(), adc_read_vdda_mv());
+        // Loop debug printf here
     }
 }
 
@@ -55,9 +53,8 @@ int main (void)
     msp_displayport_init();
 
     if(rtc6705_init()) {
-        printf("rtc6705 detected\n\n");
-        rtc6705_set_frequency(5880);
-        rtc6705_set_power(RTC6705_PA_3dBm);
+        printf("rtc6705 detected\r\n");
+        rtc6705_set_frequency(5880); // TODO: remove after implementing configuration saving to flash
 
         rf_pa_init();
         rf_pa_set_power_level(RF_PA_PWR_20mW);
