@@ -1,12 +1,16 @@
 cmake_minimum_required(VERSION 3.22)
+# ===== Build variant selection =====
+#   OpenPixelOSD      -> base OSD (no VTX drivers)
+#   OpenPixelOSD_VTX  -> OSD + VTX (RTC6705 / PA / MSP VTX)
+set(BUILD_VARIANT "" CACHE STRING "Build variant: VTX")
 
-set(TARGET_MCU "" CACHE STRING "Target MCU (e.g., G431, G474)")
+set(TARGET_MCU "" CACHE STRING "Target MCU (e.g., STM32G431, STM32G474)")
 # set default to G431 if not specified
 if(NOT TARGET_MCU)
-    set(TARGET_MCU G431)
+    set(TARGET_MCU STM32G431)
 endif()
 
-message(STATUS "Selected TARGET_MCU=${TARGET_MCU}")
+message(STATUS "Selected TARGET_MCU=${TARGET_MCU} BUILD_VARIANT=${BUILD_VARIANT}")
 
 if(UNIX AND NOT APPLE)
     # Linux
@@ -90,7 +94,7 @@ message(STATUS "Build type: " ${CMAKE_BUILD_TYPE})
 add_executable(${CMAKE_PROJECT_NAME})
 
 
-if(TARGET_MCU STREQUAL "G431")
+if(TARGET_MCU STREQUAL "STM32G431")
     message(STATUS "Building for STM32G431")
     add_compile_definitions(
             MCU_TYPE=\"STM32G431\"
@@ -99,7 +103,7 @@ if(TARGET_MCU STREQUAL "G431")
     )
     set(LINKER_SCRIPT ${CMAKE_SOURCE_DIR}/stm32g431cbux_flash.ld)
     set(STARTUP_ASSEMBLY_FILE ./src/stm32g4xx/startup_stm32g431xx.s)
-elseif(TARGET_MCU STREQUAL "G474")
+elseif(TARGET_MCU STREQUAL "STM32G474")
     message(STATUS "Building for STM32G474")
     add_compile_definitions(
             MCU_TYPE=\"STM32G474\"
@@ -111,6 +115,16 @@ elseif(TARGET_MCU STREQUAL "G474")
     set(SOURCE src/fonts/font_system.c)
 else()
     message(FATAL_ERROR "Unsupported MCU type: ${TARGET_MCU}")
+endif()
+
+if(BUILD_VARIANT STREQUAL "VTX")
+    message(STATUS "Building with VTX support")
+    set(BUILD_NAME "_VTX")
+    add_compile_definitions(BUILD_VARIANT_VTX)
+    set(VTX_SRC
+            ./src/rtc6705.c
+            ./src/rf_pa.c
+            ./src/vtx_msp.c)
 endif()
 
 add_compile_definitions(
@@ -129,6 +143,7 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         ${STARTUP_ASSEMBLY_FILE}
         ${SOURCE}
+        ${VTX_SRC}
         ./src/stm32g4xx/stm32g4xx_it.c
         ./src/stm32g4xx/system_stm32g4xx.c
         ./src/stm32g4xx/sysmem.c
@@ -150,9 +165,6 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
         ./src/msp_displayport.c
         ./src/fonts/update_font.c
         ./src/video_graphics.c
-        ./src/rtc6705.c
-        ./src/rf_pa.c
-        ./src/vtx_msp.c
         ./src/main.c
 
 )
@@ -177,8 +189,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
 
 # Generate hex and bin files
-set(HEX_FILE ${PROJECT_BINARY_DIR}/${CMAKE_PROJECT_NAME}_${TARGET_MCU}.hex)
-set(BIN_FILE ${PROJECT_BINARY_DIR}/${CMAKE_PROJECT_NAME}_${TARGET_MCU}.bin)
+set(HEX_FILE ${PROJECT_BINARY_DIR}/${CMAKE_PROJECT_NAME}_${TARGET_MCU}${BUILD_NAME}.hex)
+set(BIN_FILE ${PROJECT_BINARY_DIR}/${CMAKE_PROJECT_NAME}_${TARGET_MCU}${BUILD_NAME}.bin)
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_OBJCOPY} -Oihex $<TARGET_FILE:${PROJECT_NAME}> ${HEX_FILE}

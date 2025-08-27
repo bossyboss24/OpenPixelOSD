@@ -2,6 +2,8 @@
 /**
  * Copyright (C) 2025 Vitaliy N <vitaliy.nimych@gmail.com>
  */
+#include <stdio.h>
+#include <string.h>
 #include "msp_displayport.h"
 #include "canvas_char.h"
 #include "fonts/update_font.h"
@@ -9,9 +11,11 @@
 #include "msp.h"
 #include "uart.h"
 #include "usb.h"
-#include <stdio.h>
-#include <string.h>
-#include <vtx_msp.h>
+
+#if defined(BUILD_VARIANT_VTX)
+#include "vtx_msp.h"
+#define MSP_REQUEST_LOOP_INTERVAL 1000
+#endif
 
 typedef enum {
     MSP_DISPLAYPORT_KEEPALIVE,
@@ -54,7 +58,9 @@ EXEC_RAM static void msp_callback(uint8_t owner, msp_version_t msp_version, uint
             {
                 static bool displayport_initialized = false;
                 if (!displayport_initialized) {
+                    #if defined(BUILD_VARIANT_VTX)
                     vtx_msp_request_config(owner);
+                    #endif
                     displayport_initialized = true;
                     show_logo = false;
                     // Send canvas size to FC
@@ -71,7 +77,6 @@ EXEC_RAM static void msp_callback(uint8_t owner, msp_version_t msp_version, uint
                     default:
                         break;
                     }
-
                 }
             }
                 break;
@@ -111,11 +116,13 @@ EXEC_RAM static void msp_callback(uint8_t owner, msp_version_t msp_version, uint
         case MSP_SET_VTX_CONFIG:
         case MSP_VTXTABLE_BAND:
         case MSP_VTXTABLE_POWERLEVEL: {
+#if defined(BUILD_VARIANT_VTX)
             vtx_msp_handle_msp(owner, msp_cmd, data_size, payload);
             const vtx_config_t *vtx_config = vtx_get_config();
             if (!vtx_config->vtx_table_available) {
                 vtx_msp_clear_table_and_set_defaults(owner);
             }
+#endif
         }
             break;
 
@@ -142,13 +149,8 @@ EXEC_RAM static void msp_callback(uint8_t owner, msp_version_t msp_version, uint
     }
 }
 
-#define MSP_REQUEST_LOOP_INTERVAL 1000
-
 EXEC_RAM void msp_loop_process(void)
 {
-    static uint32_t last_tick = 0;
-    static bool resp = true;
-
     uint8_t byte;
     while (uart_rx_ring_get(&byte)) {
         msp_process_received_data(&msp_uart, byte);
@@ -157,8 +159,12 @@ EXEC_RAM void msp_loop_process(void)
         msp_process_received_data(&msp_usb, byte);
     }
 
+#if defined(BUILD_VARIANT_VTX)
+    static uint32_t last_tick = 0;
+    static bool resp = true;
     if ((HAL_GetTick() - last_tick) >= MSP_REQUEST_LOOP_INTERVAL && resp) {
         last_tick = HAL_GetTick();
         vtx_msp_request_config(MSP_OWNER_UART);
     }
+#endif
 }

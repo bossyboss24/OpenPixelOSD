@@ -8,10 +8,10 @@
 #include "usb.h"
 #include "video_gen.h"
 #include "video_overlay.h"
-
+#if defined(BUILD_VARIANT_VTX)
 #include "rtc6705.h"
-
 #include <rf_pa.h>
+#endif
 #include <stdio.h>
 
 #if defined(HIGH_RAM)
@@ -52,6 +52,7 @@ int main (void)
 #endif
     msp_displayport_init();
 
+#if defined(BUILD_VARIANT_VTX)
     if(rtc6705_init()) {
         printf("rtc6705 detected\r\n");
         rtc6705_set_frequency(5880); // TODO: remove after implementing configuration saving to flash
@@ -59,6 +60,7 @@ int main (void)
         rf_pa_init();
         rf_pa_set_power_level(RF_PA_PWR_20mW);
     }
+#endif
 
     while (1)
     {

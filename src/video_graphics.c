@@ -413,5 +413,7 @@ void video_draw_3d_cube_animation(void)
     if (angle_y >= 2 * M_PI) angle_y -= 2 * M_PI;
     if (angle_z >= 2 * M_PI) angle_z -= 2 * M_PI;
 }
-
+#else
+// Empty file placeholder
+void empty_unit(void) {}
 #endif

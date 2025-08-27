@@ -3,17 +3,29 @@ name: build-ubuntu
 env:
   BUILD_TYPE: Release
 
-# Triggers the workflow on push or pull request events
 on: [push, pull_request]
 
 jobs:
   build:
-
+    name: build (${{ matrix.job_name }})
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        mcu: [ G431, G474 ]
+        include:
+          - mcu: STM32G431
+            variant_flag: ""
+            job_name: STM32G431
+          - mcu: STM32G431
+            variant_flag: "-DBUILD_VARIANT=VTX"
+            job_name: STM32G431_VTX
+
+          - mcu: STM32G474
+            variant_flag: ""
+            job_name: STM32G474
+          - mcu: STM32G474
+            variant_flag: "-DBUILD_VARIANT=VTX"
+            job_name: STM32G474_VTX
 
     steps:
     - name: Checkout
@@ -28,22 +40,22 @@ jobs:
         release: '14.2.Rel1' # <-- The compiler release to use
 
     - name : Create build directory
-      run: mkdir -p build-${{ matrix.mcu }}
+      run: mkdir -p build-${{ matrix.job_name }}
 
-    - name: build
-      working-directory: ./build-${{ matrix.mcu }}
+    - name : Configure & Build
+      working-directory: ./build-${{ matrix.job_name }}
       run: |
-        cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DTARGET_MCU=${{ matrix.mcu }} ..
-        make -j4
+        cmake -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DTARGET_MCU=${{ matrix.mcu }} ${{ matrix.variant_flag }} ..
+        make -j"$(nproc)"
 
-    - name: Upload Artifacts HEX
+    - name : Upload HEX
       uses: actions/upload-artifact@v4
       with:
-        name: "firmware_${{ matrix.mcu }}_HEX"
-        path: ${{runner.workspace}}/OpenPixelOSD/build-${{ matrix.mcu }}/*.hex
+        name: "OpenPixelOSD_${{ matrix.job_name }}_HEX"
+        path: ${{ github.workspace }}/build-${{ matrix.job_name }}/*.hex
 
-    - name: Upload Artifacts BIN
+    - name: Upload BIN
       uses: actions/upload-artifact@v4
       with:
-        name: "firmware_${{ matrix.mcu }}_BIN"
-        path: ${{runner.workspace}}/OpenPixelOSD/build-${{ matrix.mcu }}/*.bin
+        name: "OpenPixelOSD_${{ matrix.job_name }}_BIN"
+        path: ${{ github.workspace }}/build-${{ matrix.job_name }}/*.bin
