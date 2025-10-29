@@ -66,7 +66,7 @@ EXEC_RAM static void init_buffers()
 static void show_version(void)
 {
     char str[COLUMN_SIZE];
-    sprintf(str, "Hello, %s!", "world");
+    sprintf(str, "HELLO, %s!", "WORLD");
     canvas_char_write(8, 9, str, strlen(str));
     sprintf(str, "MCU: %s", MCU_TYPE);
     canvas_char_write(8, 10, str, strlen(str));
